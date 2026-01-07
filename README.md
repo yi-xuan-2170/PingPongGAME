@@ -188,6 +188,71 @@ graph TD
     style Training fill:#f1c40f,color:#000
     style Execution fill:#2ecc71,color:#fff
 ```
+# AI 遊戲專案：系統開發流水線 (System Pipeline)
+
+本專案透過四個核心階段，實現從「規則導向資料採集」到「機器學習模型執行」的完整閉環系統。
+
+---
+
+### 1. 第一階段：資料蒐集 (Data Collection)
+* **對應檔案**：`Rule-based_Data_generation.py`
+* **階段說明**：利用物理規則（專家系統）模擬完美操作，將遊戲動態過程轉化為可供學習的原始數據。
+* **輸入 (Input)**：
+    * **即時遊戲狀態 (`scene_info`)**：包含球的座標 $(x, y)$、球的速度 $(v_x, v_y)$ 以及板子的位置。
+* **輸出 (Output)**：
+    * **原始數據檔 (`.csv`)**：儲存於 `training_data/`，包含每一幀的環境特徵與專家對應的指令標籤 (`command`)。
+
+---
+
+### 2. 第二階段：資料清理與整理 (Data Cleaning)
+* **對應檔案**：`clean_data.py`
+* **階段說明**：提煉數據精華，透過過濾與採樣平衡，確保 AI 學習到正確且高效的規律。
+* **輸入 (Input)**：
+    * **多個原始 CSV 檔案**：來自第一階段錄製的所有遊戲回合。
+* **輸出 (Output)**：
+    * **清洗後的數據集 (`game_data_cleaned.csv`)**：
+        * **特徵優化**：預計算未來落點位置，修正標籤。
+        * **噪音過濾**：僅保留球向下掉（`ball_vy > 0`）的關鍵接球時刻。
+        * **分佈平衡**：達成「移動」與「不動」指令的 **1:1** 數量比例，避免 AI 產生懶惰偏差。
+
+
+
+---
+
+### 3. 第三階段：模型訓練與評估 (Model Training & Evaluation)
+* **對應檔案**：`train.py`
+* **階段說明**：使用隨機森林 (Random Forest) 演算法將數據規律封裝進模型物件中。
+* **輸入 (Input)**：
+    * **`game_data_cleaned.csv`**：高品質且平衡的訓練數據。
+    * **特徵選擇**：僅選取 `diff_x` (相對距離) 與 `ball_vx` (水平速度) 作為特徵，移除無關噪音。
+* **輸出 (Output)**：
+    * **模型檔案 (`model.pickle`)**：訓練完成的分類器模型。
+    * **評估報告 (Metrics Report)**：包含 Accuracy、F1-Score 等數據，用以驗證 AI 的決策準確性。
+
+
+
+---
+
+### 4. 第四階段：執行 (AI Execution / ML Play)
+* **對應檔案**：`ml_play.py`
+* **階段說明**：AI 實戰期，將學到的模型部署回遊戲引擎中進行即時反饋控制。
+* **輸入 (Input)**：
+    * **即時遊戲狀態 (`scene_info`)**：遊戲運行時每一幀的即時物理數據。
+    * **模型檔案 (`model.pickle`)**：加載預先訓練好的機器學習模型。
+* **輸出 (Output)**：
+    * **預測指令 (`command`)**：AI 根據模型推理，即時回傳 `MOVE_LEFT`、`MOVE_RIGHT` 或 `NONE` 驅動遊戲板子。
+
+---
+
+## 系統 I/O 關係總結表
+
+| 階段 | 主要輸入 (Input) | 核心處理 (Process) | 主要輸出 (Output) |
+| :--- | :--- | :--- | :--- |
+| **1. 蒐集** | 遊戲即時物理狀態 | 物理落點預測 + 行為錄製 | 原始數據 CSV |
+| **2. 清理** | 原始數據 CSV 群 | 數據合併、標籤修正、1:1 平衡 | **`game_data_cleaned.csv`** |
+| **3. 訓練** | 清洗後的特徵數據 | 隨機森林演算法擬合規律 | **`model.pickle`** |
+| **4. 執行** | 即時場景 + 訓練模型 | 即時特徵提取與模型推理 | 遊戲行動指令 |
+
 ### 1. 物理反射預判邏輯 (Physics Prediction Logic)
 
 此部分負責計算球的運動軌跡，包含時間預估與邊界反彈處理，以預測球最終落到板子高度的 X 座標 。
@@ -252,4 +317,70 @@ def reset(self):
                 writer.writeheader() # 建立標題列 
             writer.writerows(self.data_log) # 寫入完整教學數據 
         self.data_log = [] # 清空記憶體緩存
+```
+### 1.合併多筆遊戲資料 (Merge multiple game data)
+*  (Input)：training_data/ 資料夾中所有名為 game_data_rule_based.csv 的原始檔案。
+
+* 處理 (Process)：使用 glob 搜尋所有符合條件的檔案。利用 pd.concat 將多局遊戲的 CSV 縱向合併。強制轉換座標與速度為數字型態，並刪除含有空值（NaN）的無效幀。
+
+* 輸出 (Output)：一個統一的 pandas DataFrame。
+```python
+# 合併與清理標題/無效值
+df_list = [pd.read_csv(filename) for filename in all_files]
+df = pd.concat(df_list, ignore_index=True)
+
+cols_to_numeric = ['ball_x', 'ball_y', 'ball_vx', 'ball_vy', 'platform_x']
+for col in cols_to_numeric:
+    df[col] = pd.to_numeric(df[col], errors='coerce')
+df = df.dropna()
+```
+### 2.核心邏輯：預判標註 (Predictive Labeling)
+
+* 處理 (Process)：
+
+計算下一幀球的預期位置：target_x = ball_x + ball_vx。計算此位置與板子中心的距離偏差。重新賦予 command 標籤，讓模型學習「瞄準未來落點」而非「追逐當前位置」。
+```python
+# ★ 瞄準未來位置 (現在位置 + 速度)
+target_x = ball_x + ball_vx 
+diff = target_x - (df['platform_x'] + 20)
+
+# 重新定義動作標籤
+df['command'] = 'NONE' 
+df.loc[diff > 1, 'command'] = 'MOVE_RIGHT'
+df.loc[diff < -1, 'command'] = 'MOVE_LEFT'
+```
+### 3.過濾球往下掉的數據 (Filter ball_vy > 0)
+* 輸入 (Input)：包含所有球路方向的完整資料。
+
+* 處理 (Process)：僅保留 ball_vy > 0 的資料列。
+
+* 目的：移除球往上彈（朝向對方）的數據，因為此時我方板子的移動與接球無關，屬於雜訊。
+```python
+# 只保留 ball_vy > 0 (球往下掉朝向我方)
+df = df[df['ball_vy'] > 0]
+```
+### 資料平衡 1:1 (Data Balancing)
+* 輸入 (Input)：過濾後的非對稱分佈資料。
+
+* 處理 (Process)：將資料分類為「不動 (NONE)」與「有動 (MOVE)」。若 NONE 數量過多，使用 sample 進行隨機採樣，使其數量與 MOVE 指令一致。
+
+* 輸出 (Output)：平衡後的資料集 df_cleaned。
+```python
+if len(df_none) > len(df_move):
+    # 削減 NONE 數量以達成 1:1 平衡
+    df_none_sampled = df_none.sample(n=len(df_move), random_state=42)
+else:
+    df_none_sampled = df_none
+
+df_cleaned = pd.concat([df_none_sampled, df_move])
+```
+
+
+### 
+```python
+
+```
+### 
+```python
+
 ```
