@@ -188,3 +188,68 @@ graph TD
     style Training fill:#f1c40f,color:#000
     style Execution fill:#2ecc71,color:#fff
 ```
+### 1. 物理反射預判邏輯 (Physics Prediction Logic)
+
+此部分負責計算球的運動軌跡，包含時間預估與邊界反彈處理，以預測球最終落到板子高度的 X 座標 。
+```python
+# 運作於 update 函數內
+if incoming:
+    # A. 計算時間 (步驟): 垂直距離 / 垂直速度 
+    steps = (target_y - ball_y) / ball_vy
+    
+    # B. 預測初步落點 X: 起始點 + (水平速度 * 步數) 
+    pred_x = ball_x + (ball_vx * steps)
+    
+    # C. 處理牆壁反彈邏輯 
+    bound_left = 0
+    bound_right = 200
+    while pred_x < bound_left or pred_x > bound_right:
+        if pred_x > bound_right:
+            # 撞到右牆向左反彈
+            pred_x = bound_right - (pred_x - bound_right) [cite: 3]
+        elif pred_x < bound_left:
+            # 撞到左牆向右反彈
+            pred_x = -pred_x [cite: 3]
+```
+### 2.專家規則演算法 (Expert Rule-based Algorithm)
+
+此部分根據物理預判出的落點 pred_x 與板子當前中心點 platform_center 進行比較，決定具體的行動指令（Command） 。
+```python
+# 運作於 update 函數內
+# D. 定義決策基準 
+platform_center = platform_x + 20 # 板子寬度為 40，中心在 +20 
+tolerance = 2 # 容許誤差範圍 
+
+# E. 根據相對位置決定指令 
+if platform_center < pred_x - tolerance:
+    command = "MOVE_RIGHT" # 板子在球落點左側，向右移 
+elif platform_center > pred_x + tolerance:
+    command = "MOVE_LEFT" # 板子在球落點右側，向左移 
+else:
+    command = "NONE" # 已對準落點，保持不動
+```
+### 3. 儲存原始數據 CSV (Data Storage CSV)
+
+此部分包含兩個階段：第一是在遊戲運行中即時將特徵與決策存入記憶體（data_log），第二是在遊戲重置時將其寫入實體 CSV 檔案 。
+```python
+# 階段 A: 錄製數據 (於 update 函數內)
+if self.side == "1P": # 僅錄製 1P 數據 
+    if ball_vx != 0 or ball_vy != 0:
+        self.data_log.append({
+            "ball_x": ball_x, "ball_y": ball_y,
+            "ball_vx": ball_vx, "ball_vy": ball_vy,
+            "platform_x": platform_x,
+            "command": command # 存入專家產出的正確指令 
+        })
+
+# 階段 B: 寫入檔案 (於 reset 函數內)
+def reset(self):
+    if self.side == "1P" and self.data_log:
+        file_exists = os.path.isfile(self.file_path)
+        with open(self.file_path, 'a', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=self.data_log[0].keys())
+            if not file_exists:
+                writer.writeheader() # 建立標題列 
+            writer.writerows(self.data_log) # 寫入完整教學數據 
+        self.data_log = [] # 清空記憶體緩存
+```
