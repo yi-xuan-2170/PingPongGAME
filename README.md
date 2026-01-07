@@ -188,7 +188,7 @@ graph TD
     style Training fill:#f1c40f,color:#000
     style Execution fill:#2ecc71,color:#fff
 ```
-# AI 遊戲專案：系統開發流水線 (System Pipeline)
+# API
 
 本專案透過四個核心階段，實現從「規則導向資料採集」到「機器學習模型執行」的完整閉環系統。
 
