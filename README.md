@@ -141,3 +141,49 @@ random_state=42：
 2. **清理數據**：運行 `python clean_data.py` 生成清理後的 CSV。
 3. **訓練模型**：運行 `python train.py` 產出 `model.pickle`。
 4. **啟動 AI**：執行遊戲並指定使用 `ml_play.py`。
+   
+```mermaid
+graph TD
+    %% 主標題
+    Root[AI 打磚塊遊戲系統] --> Collection[1. 資料蒐集階段]
+    Root --> Cleaning[2. 資料清理與整理]
+    Root --> Training[3. 模型訓練與評估]
+    Root --> Execution[4. AI 執行階段]
+
+    %% 第一階段：資料蒐集
+    subgraph "Rule-based Data Generation"
+    Collection --> RB_Algo[專家規則演算法]
+    Collection --> Physics[物理反射預判邏輯]
+    Collection --> CSV_Log[儲存原始數據 CSV]
+    end
+
+    %% 第二階段：資料清理
+    subgraph "Data Preprocessing"
+    Cleaning --> Merge[合併多筆遊戲資料]
+    Cleaning --> Filter[過濾 ball_vy > 0 數據]
+    Cleaning --> Balance[資料平衡 NONE vs MOVE 1:1]
+    end
+
+    %% 第三階段：訓練與評估
+    subgraph "Machine Learning"
+    Training --> RF_Model[Random Forest 模型初始化]
+    Training --> Hyper[超參數設定 n_estimators/max_depth]
+    Training --> Metrics[評估指標 Accuracy/F1-Score]
+    Training --> Export[導出 model.pickle]
+    end
+
+    %% 第四階段：執行
+    subgraph "ML Inference"
+    Execution --> Load[加載 model.pickle]
+    Execution --> Feature[即時提取特徵 diff_x/ball_vx]
+    Execution --> Predict[模型預測動作輸出]
+    Execution --> Action[控制板子移動]
+    end
+
+    %% 樣式設定
+    style Root fill:#f96,stroke:#333,stroke-width:2px
+    style Collection fill:#3498db,color:#fff
+    style Cleaning fill:#9b59b6,color:#fff
+    style Training fill:#f1c40f,color:#000
+    style Execution fill:#2ecc71,color:#fff
+```
