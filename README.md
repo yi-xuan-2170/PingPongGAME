@@ -141,7 +141,8 @@ random_state=42：
 2. **清理數據**：運行 `python clean_data.py` 生成清理後的 CSV。
 3. **訓練模型**：運行 `python train.py` 產出 `model.pickle`。
 4. **啟動 AI**：執行遊戲並指定使用 `ml_play.py`。
-   
+
+## 系統架構拆解   
 ```mermaid
 graph TD
     %% 主標題
